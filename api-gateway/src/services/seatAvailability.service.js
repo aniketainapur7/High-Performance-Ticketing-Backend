@@ -1,5 +1,5 @@
-import prisma from "../config/prisma"
-import { redis } from "../config/redis"
+import prisma from "../config/prisma.js"
+import { redis } from "../config/redis.js"
 
 
 export const getSeatAvailability = async (trainId) => {

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getSeats } from "../controllers/seat.controller.js";
 
 
 const seatRouter = Router();

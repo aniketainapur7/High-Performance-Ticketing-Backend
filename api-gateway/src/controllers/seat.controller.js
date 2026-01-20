@@ -1,4 +1,4 @@
-import { getSeatAvailability } from "../services/seatAvailability.service";
+import { getSeatAvailability } from "../services/seatAvailability.service.js";
 
 export const getSeats = async (req, res) => {
     const trainId = Number(req.params.trainId);
