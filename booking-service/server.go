@@ -26,7 +26,6 @@ func (s *server) ConfirmBooking(
 	userId := req.UserId
 
 	lockKey := fmt.Sprintf("seat:%d:lock", seatId)
-
 	lockedBy, err := s.redis.Get(ctx, lockKey).Result()
 
 	bitmapKey := fmt.Sprintf("train:%d:seats",req.TrainId)
