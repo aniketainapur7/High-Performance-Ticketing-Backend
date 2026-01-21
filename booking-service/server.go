@@ -29,70 +29,38 @@ func (s *server) ConfirmBooking(
 	trainId := req.TrainId
 
 	lockKey := fmt.Sprintf("seat:%d:lock", seatId)
-	lockedBy, err := s.redis.Get(ctx, lockKey).Result()
 
 	bitmapKey := fmt.Sprintf("train:%d:seats", trainId)
 	seatIndex := int64(seatId - 1)
 
-	if err == redis.Nil {
-		return &bookingpb.ConfirmBookingResponse{
-			Success: false,
-			Error:   "LOCK_EXPIRED",
-		}, nil
-	}
+	result, err := s.redis.Eval(ctx, bookSeatLua, []string{lockKey, bitmapKey}, seatIndex, userId).Result()
 
 	if err != nil {
 		return &bookingpb.ConfirmBookingResponse{
 			Success: false,
-			Error:   "REDIS_ERROR",
+			Error:   err.Error(),
 		}, nil
 	}
 
-	if lockedBy != userId {
+	if result != "OK" {
 		return &bookingpb.ConfirmBookingResponse{
 			Success: false,
-			Error:   "Locked By Other User",
+			Error:   "UNKNOWN_ERROR",
 		}, nil
 	}
-
-	booked, err := s.redis.GetBit(ctx, bitmapKey, seatIndex).Result()
+	_, err = s.db.Exec(ctx,
+		`INSERT INTO "Booking" ("seatId","trainId","userId","status")
+   		VALUES ($1,$2,$3,'CONFIRMED')`,
+		seatId, trainId, userId,
+	)
 
 	if err != nil {
+		s.redis.SetBit(ctx, bitmapKey, seatIndex, 0)
 		return &bookingpb.ConfirmBookingResponse{
 			Success: false,
-			Error:   "REDIS_ERROR",
+			Error:   "DB_ERROR",
 		}, nil
 	}
-
-	if booked == 1 {
-		return &bookingpb.ConfirmBookingResponse{
-			Success: false,
-			Error:   "Seat Already Booked",
-		}, nil
-	}
-	_, err = s.redis.SetBit(ctx, bitmapKey, seatIndex, 1).Result()
-
-	if err != nil {
-		return &bookingpb.ConfirmBookingResponse{
-			Success: false,
-			Error:   "REDIS_ERROR",
-		}, nil
-	}
-
-	_, err = s.db.Exec(ctx, `INSERT INTO bookings(id,seat_id,train_id,user_id,status)
-						  VALUES(gen_random_uuid(),$1,$2,$3,"CONFIRMED")`,
-						seatId, trainId, userId);
-	
-	if err != nil {
-		s.redis.SetBit(ctx,bitmapKey,seatIndex,0)
-		return &bookingpb.ConfirmBookingResponse{
-			Success: false,
-			Error: "DB_ERROR",
-		},nil
-	}
-
-	s.redis.Del(ctx,lockKey)
-
 
 	return &bookingpb.ConfirmBookingResponse{
 		Success: true,
@@ -101,7 +69,7 @@ func (s *server) ConfirmBooking(
 
 func main() {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: "redis:6379",
 	})
 
 	ctx := context.Background()
@@ -116,7 +84,7 @@ func main() {
 
 	dbConn, err := pgx.Connect(
 		context.Background(),
-		"postgresql://ticket:ticket@localhost:5432/ticketing",
+		"postgresql://ticket:ticket@postgres:5432/ticketing",
 	)
 
 	if err != nil {
@@ -144,3 +112,31 @@ func main() {
 	log.Println("GRPC SERVICE RUNNING ON PORT 50051")
 	grpcServer.Serve(lis)
 }
+
+var bookSeatLua = `
+-- KEYS[1] = lockKey
+-- KEYS[2] = bitmapKey
+-- ARGV[1] = seatIndex
+-- ARGV[2] = userId
+
+local lockedBy = redis.call("GET",KEYS[1])
+
+if not lockedBy then 
+	return {err = "LOCK_EXPIRED"}
+end
+
+if lockedBy ~= ARGV[2] then
+	return {err = "LOCK_NOT_OWNED"}
+end
+
+local booked = redis.call("GETBIT",KEYS[2],ARGV[1])
+
+if booked == 1 then
+	return {err = "SEAT_ALREADY_BOOKED"}
+end
+
+redis.call("SETBIT",KEYS[2],ARGV[1],1)
+redis.call("DEL",KEYS[1])
+
+return "OK"
+`

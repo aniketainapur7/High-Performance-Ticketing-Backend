@@ -1,3 +1,4 @@
+import { bookingClient } from "../grpc/bookingClient.js";
 import { confirmBooking } from "../services/booking.service.js";
 
 export const confirmBookingHandler = async (req, res) => {
@@ -9,24 +10,43 @@ export const confirmBookingHandler = async (req, res) => {
         });
     }
 
-    try {
-        const booking = await confirmBooking(trainId, seatId, userId);
-        return res.json({
-            message: "Booking Confirmed",
-            bookingId: booking.id
-        });
-    } catch (err) {
-        if (err.message === "LOCK_EXPIRED") {
-            return res.status(410).json({ error: "Seat lock expired" });
-        }
-        if (err.message === "LOCK_NOT_OWNED") {
-            return res.status(403).json({ error: "Seat locked by another user" });
-        }
-        if (err.message === "Seat_Already_Booked") {
-            return res.status(403).json({ error: "Seat booked by another user" });
+    // try {
+    //     const booking = await confirmBooking(trainId, seatId, userId);
+    //     return res.json({
+    //         message: "Booking Confirmed",
+    //         bookingId: booking.id
+    //     });
+    // } catch (err) {
+    //     if (err.message === "LOCK_EXPIRED") {
+    //         return res.status(410).json({ error: "Seat lock expired" });
+    //     }
+    //     if (err.message === "LOCK_NOT_OWNED") {
+    //         return res.status(403).json({ error: "Seat locked by another user" });
+    //     }
+    //     if (err.message === "Seat_Already_Booked") {
+    //         return res.status(403).json({ error: "Seat booked by another user" });
+    //     }
+
+    //     console.error(err);
+    //     res.status(500).json({ error: "internal server error" });
+    // }
+
+    bookingClient.confirmBooking({ trainId, seatId, userId }, (err, response) => {
+        if (err) {
+            console.error("gRPC error:", err);
+            return res.status(500).json({ error: "booking service error" });
         }
 
-        console.error(err);
-        res.status(500).json({ error: "internal server error" });
-    }
+        if (!response.success) {
+            return res.status(400).json({
+                error: response.error,
+            });
+        }
+
+        res.json({
+            message: "Booking confirmed",
+            bookingId: response.bookingId,
+        });
+
+    });
 }

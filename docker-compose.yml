@@ -8,11 +8,32 @@ services:
       POSTGRES_DB: ticketing
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+
+  booking-service:
+    build: ./booking-service
+    depends_on:
+      - redis
+      - postgres
+    ports:
+      - "50051:50051"
+
+  api-gateway:
+    build: ./api-gateway
+    depends_on:
+      - redis 
+      - postgres
+    ports:
+      - "3000:3000"
+  
+volumes:
+  pgdata:
 
     
   

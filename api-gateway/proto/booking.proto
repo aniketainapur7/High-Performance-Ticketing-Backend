@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package booking;
+
+option go_package = "./bookingpb";
+
+service BookingService {
+  rpc ConfirmBooking (ConfirmBookingRequest)
+      returns (ConfirmBookingResponse);
+}
+
+message ConfirmBookingRequest {
+  int32 seatId = 1;
+  int32 trainId = 2;
+  string userId = 3;
+}
+
+message ConfirmBookingResponse {
+  bool success = 1;
+  string bookingId = 2;
+  string error = 3;
+}
